@@ -5,6 +5,7 @@
 **The AI Agent Tool Bridge — exposing internal services as standardized MCP tools**
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)]()
+[![Visibility](https://img.shields.io/badge/Visibility-public-00C853?style=for-the-badge)]()
 [![FastMCP](https://img.shields.io/badge/FastMCP-1A73E8?style=for-the-badge&logo=fastmcp&logoColor=white)]()
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)]()
 [![Automation](https://img.shields.io/badge/Production_Ready-00C853?style=for-the-badge)]()
