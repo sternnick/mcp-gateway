@@ -225,7 +225,7 @@ contract is currently shaped that way.
 | Authorisation | Per-principal tool allowlist, default deny; the advertised tool list is filtered per principal |
 | Egress | SSRF guard on browser and fetch tools: loopback, link-local, metadata addresses and non-http schemes are refused |
 | Destructive actions | Email is drafted, never sent, until a human supplies the approval token |
-| Docker | Accessed through a socket proxy over a unix socket, not the raw daemon socket |
+| Docker | Accessed through a socket proxy on loopback, not the raw daemon socket: two read verbs allowed, writes refused |
 | Rate limiting | Per-agent ceiling on the RAG surface; admission control ahead of external providers |
 | Retention | Generated artefacts are reported by `retention_status` and pruned after `RETENTION_DAYS` |
 
