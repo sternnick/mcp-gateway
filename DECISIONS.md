@@ -66,7 +66,7 @@ which would have made every tool's staleness semantics a separate argument.
 ## D5. Docker through a socket proxy on loopback, not the raw daemon socket
 
 **Choice.** The gateway talks to a socket proxy over loopback TCP (`DOCKER_API_URL`, default
-`http://127.0.0.1:2375`). The proxy is the only container that mounts `/var/run/docker.sock`, read-only,
+`http://localhost:2375`). The proxy is the only container that mounts `/var/run/docker.sock`, read-only,
 and it allows `GET /containers/json` and `GET /containers/{id}/logs` while answering 403 to every write
 verb.
 

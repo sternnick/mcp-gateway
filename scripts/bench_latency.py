@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Latency measurement harness for the live MCP gateway (matches the installed mcp client API).
 
-Run inside the aiproject-mcp container, which already holds the auth token and the client library:
+Run inside the gateway container, which already holds the auth token and the client library:
 
-    docker exec -i aiproject-mcp python - < bench.py
+    docker exec -i <container> python - < bench.py
 
 Design: single in-flight request, no concurrency, because this measures per-call latency rather than
 throughput. Three lanes, because they measure different hops:
@@ -25,7 +25,7 @@ try:
 except ImportError:  # pragma: no cover
     import httpx
 
-URL = os.environ.get("BENCH_URL", "http://127.0.0.1:9000/mcp")
+URL = os.environ.get("BENCH_URL", "http://localhost:9000/mcp")
 TOKEN = os.environ.get("MCP_AUTH_TOKEN", "")
 
 LANES = [

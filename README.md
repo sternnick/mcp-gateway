@@ -79,7 +79,7 @@ Category | Tool | Capability
 <!-- TOOLS -->
 Agent orchestration | `langgraph_agents` | List the LangGraph agent definition (model + available tools).
 Agent orchestration | `langgraph_health` | Check the LangGraph agent service health.
-Agent orchestration | `langgraph_run` | Run the LangGraph agent (DEFAULT_MODEL via 192.168.11.15:14000).
+Agent orchestration | `langgraph_run` | Run the LangGraph agent (DEFAULT_MODEL via <host>:14000).
 Anti-detect browser | `camo_click` | Click an element matching the CSS selector in the Camoufox browser.
 Anti-detect browser | `camo_close` | Close THIS client's Camoufox page immediately.
 Anti-detect browser | `camo_content` | Return the visible text of the current Camoufox page (truncated).
@@ -96,15 +96,15 @@ Browser | `browser_evaluate` | Run JavaScript in the current page and return the
 Browser | `browser_navigate` | Open a URL in the headless browser.
 Browser | `browser_screenshot` | Take a screenshot of the current page. Saves the COMPLETE PNG by
 Browser | `browser_type` | Type text into an input matching the CSS selector.
-Docker | `docker_logs` | Fetch recent logs of a docker container on aiproject.
-Docker | `docker_ps` | List docker containers on aiproject.
+Docker | `docker_logs` | Fetch recent logs of a docker container on the gateway host.
+Docker | `docker_ps` | List docker containers on the gateway host.
 Email | `email_approve` | APPROVE and SEND a pending email. REQUIRES the human approval token.
 Email | `email_cancel` | Cancel a pending email YOU drafted (remove the draft). Does NOT need the approval token.
 Email | `email_pending` | List YOUR OWN emails drafted (pending) awaiting human approval.
 Email | `email_send` | DRAFT an email for sending : does NOT send. Send-only SMTP (no IMAP).
 GPU inference | `gpu_chat` | Chat completion via LiteLLM GPU server.
 GPU inference | `gpu_embed` | Embed text with bge-m3 (1024 dims) on the LiteLLM GPU server.
-GPU inference | `gpu_models` | List models available on the LiteLLM GPU server (192.168.11.15:14000).
+GPU inference | `gpu_models` | List models available on the LiteLLM GPU server (<host>:14000).
 GPU inference | `gpu_stt` | Speech-to-text with parakeet-asr-stt via LiteLLM.
 GPU inference | `gpu_tts` | Text-to-speech with kokoro-tts via LiteLLM. Saves the COMPLETE audio
 Gateway | `gateway_info` | Which build of this gateway you are talking to, right now.
@@ -129,7 +129,7 @@ Search | `research_fetch` | OpenAI-style FETCH tool. Takes a result id (URL) and
 Search | `research_menu` | List the research tiers. Choose ONE tier, then call research(topic, tier).
 Search | `research_search` | OpenAI-style SEARCH tool. Returns results[] with id/title/url/snippet.
 Search | `searxng_search` | Metasearch via the local SearXNG instance (aggregates google cse,
-System | `system_status` | Host status of aiproject: load, uptime, memory, disk.
+System | `system_status` | Host status of the gateway host: load, uptime, memory, disk.
 
 Counts by category are produced from the deployed `server.py` by
 [`scripts/extract_tools.py`](scripts/extract_tools.py), so this table cannot drift silently from the
@@ -147,7 +147,7 @@ docker compose up -d --build
 # 3. check it
 curl -s -o /dev/null -w '%{http_code}\n' \
   -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
-  http://127.0.0.1:9000/mcp     # 401 without a token, 200/406 with one
+  http://localhost:9000/mcp     # 401 without a token, 200/406 with one
 ```
 
 Minimum configuration to start: `MCP_PORT`, `MCP_AUTH_TOKEN`, and the upstream URLs you intend to use
