@@ -63,16 +63,25 @@ unambiguous answers. There is no cache invalidation story because there is no ca
 unknown, and a stale embedding is worse than a recomputed one. Also rejected: a general response cache,
 which would have made every tool's staleness semantics a separate argument.
 
-## D5. Docker through a socket proxy over a unix socket
+## D5. Docker through a socket proxy on loopback, not the raw daemon socket
 
-**Choice.** Docker tools reach the daemon through a proxy bound to a unix socket, not the raw
-`docker.sock`.
+**Choice.** The gateway talks to a socket proxy over loopback TCP (`DOCKER_API_URL`, default
+`http://localhost:2375`). The proxy is the only container that mounts `/var/run/docker.sock`, read-only,
+and it allows `GET /containers/json` and `GET /containers/{id}/logs` while answering 403 to every write
+verb.
 
-**Why.** Mounting the raw socket into the gateway is equivalent to giving it root on the host. The proxy
-narrows the reachable API surface, so a compromised tool call has fewer verbs.
+**Why.** Mounting the raw socket into the gateway is equivalent to giving it root on the host. Splitting it
+means the privileged mount lives in one small container whose reachable API surface is two read verbs, not
+in the process that executes agent-requested tool calls.
 
 **What it cost.** Some API calls are unavailable through the proxy, and a missing verb looks like a bug
-until the proxy config is read.
+until the proxy config is read. The hop is loopback TCP rather than a unix socket, so anything on the host
+that can open a port can reach the proxy; the guard is the proxy's verb allowlist, not file permissions on
+a socket.
+
+**How the boundary is held.** `deploy/tests/test_no_docker_socket_mount.sh` fails if the socket mount ever
+reappears in the gateway's compose file, and the compose comment records why the indirection exists. A
+control that is only described in a document is not a control.
 
 ## D6. Dependency pins that name their own failure
 

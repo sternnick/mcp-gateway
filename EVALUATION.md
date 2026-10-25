@@ -4,7 +4,8 @@ Every number in this file was produced by a harness in this repository against t
 None of it is estimated. The rules that kept it honest are at the bottom, including the three occasions
 where the harness was wrong before it was right.
 
-**Measured:** 2026-10-25, single host, gateway container healthy, no concurrent load.
+**Measured:** 2026-10-25, two runs on the same day, single host, gateway container healthy, no
+concurrent load. Run 2 exists because a single run is a snapshot, not a characteristic: see 1.1.
 **Client:** MCP client from `mcp` 2.2.0 over `streamable-http`, single in-flight request per lane.
 **Harness:** [`scripts/bench_latency.py`](scripts/bench_latency.py) and
 [`scripts/eval_guardrails.py`](scripts/eval_guardrails.py).
@@ -27,6 +28,25 @@ What the numbers say:
   would have hidden it; this is why the table reports p50, p95 and max separately.
 - **The GPU lane is the floor for anything model-shaped.** 358 ms p50 for one embedding, with a tight
   spread (313 to 427 ms), so the variance is upstream service noise rather than gateway queueing.
+
+### 1.1 Second run, same day
+
+Same harness, same host, roughly an hour later.
+
+| Lane | n | p50 | p95 | min | max | errors |
+|---|---|---|---|---|---|---|
+| `gateway_info` | 20 | 25.2 ms | 29.5 ms | 14.6 ms | 76.1 ms | 0 |
+| `memory_stats` | 15 | 86.7 ms | 159.8 ms | 73.3 ms | 166.2 ms | 0 |
+| `gpu_embed` | 10 | 380.1 ms | 448.8 ms | 350.5 ms | 448.8 ms | 0 |
+
+What the second run changes about the first:
+
+- **p50 is stable.** Within 1 ms for the local and RAG lanes, and about 6 percent on the GPU lane, which
+  is upstream service noise rather than a gateway difference.
+- **The RAG tail did not repeat.** Run 1 had one call at 3.4 s; the maximum in run 2 was 166 ms. A tail is
+  not a constant, which is why the table publishes max as well as p95: a p50 alone would have hidden it in
+  one run and invented a crisis in the other.
+- **Still zero errors,** 45 calls per run.
 
 ## 2. Failure rate
 

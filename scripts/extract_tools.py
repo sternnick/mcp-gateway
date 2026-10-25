@@ -22,7 +22,7 @@ import sys
 
 DEFAULT_SOURCE = os.environ.get(
     "MCP_SERVER_SOURCE",
-    "/var/home/nick/work/agent/github/aiproject/hosts/aiproject/mcp-server/server.py",
+    "<path-to-private-checkout>/hosts/<host>/mcp-server/server.py",
 )
 README = pathlib.Path(__file__).resolve().parent.parent / "README.md"
 MARKER = "<!-- TOOLS -->"
@@ -78,6 +78,10 @@ def rows(source_path: str) -> list[tuple[str, str, str]]:
         # Owner rule: no em-dashes or en-dashes in any generated content. Docstrings arrive with
         # them, so the table normalises them here rather than letting them reach the README.
         doc = doc.replace("\u2014", ":").replace("\u2013", "-")
+        # The docstrings describe a deployment. The public table must not: an IP or an internal
+        # hostname in a tool description is estate detail that a reader does not need.
+        doc = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "<host>", doc)
+        doc = doc.replace("aiproject", "the gateway host")
         doc = doc.replace("|", "/")[:160]
         out.append((category(node.name), node.name, doc))
     return sorted(out)

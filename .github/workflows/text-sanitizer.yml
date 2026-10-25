@@ -1,0 +1,40 @@
+name: Text sanitizer
+
+# The owner's rule: no em-dash (U+2014) and no en-dash (U+2013) in anything a human reads. This
+# repository is documentation only, so the whole tree is the artefact that ships.
+#
+# Deliberately self-contained: two greps and no dependency. The full implementation, with --fix and a
+# selftest, lives in sternnick/portfolio_private/scripts/sanitize_text.py and is the reference for bigger
+# changes; this job exists so that a dash cannot land here in the first place.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-typographic-dashes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse em-dashes and en-dashes
+        run: |
+          set -eu
+          status=0
+          if git grep -n "$(printf '\u2014')" -- . ; then
+            echo "::error::em-dash (U+2014) found. Use a pipe (|), a colon (:), or a hyphen (-)."
+            status=1
+          fi
+          if git grep -n "$(printf '\u2013')" -- . ; then
+            echo "::error::en-dash (U+2013) found. Use a hyphen (-)."
+            status=1
+          fi
+          if [ "$status" -eq 0 ]; then
+            echo "PASS: no em-dashes or en-dashes in $(git ls-files | wc -l) tracked files"
+          fi
+          exit "$status"

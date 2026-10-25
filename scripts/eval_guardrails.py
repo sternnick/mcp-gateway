@@ -8,8 +8,8 @@ happened to contain the word. Classification is now structural: a raised excepti
 refusal; anything else that returns is a success. That correction is the reason the recorded score is
 trustworthy, and it is written down here so the harness is not trusted by default either.
 
-Run inside the aiproject-mcp container:
-    docker exec -i aiproject-mcp python - < eval-guardrails.py
+Run inside the gateway container:
+    docker exec -i <container> python - < eval-guardrails.py
 """
 import asyncio
 import json
@@ -23,14 +23,18 @@ try:
 except ImportError:  # pragma: no cover
     import httpx
 
-URL = os.environ.get("BENCH_URL", "http://127.0.0.1:9000/mcp")
+URL = os.environ.get("BENCH_URL", "http://localhost:9000/mcp")
+# Probes are deployment configuration, not published addresses. Point them at your own loopback
+# and at your provider's metadata endpoint to test the SSRF rule for real.
+LOOPBACK_PROBE = os.environ.get("SSRF_LOOPBACK_PROBE", "http://localhost:9000/mcp")
+METADATA_PROBE = os.environ.get("SSRF_METADATA_PROBE", "http://metadata.invalid/latest/meta-data/")
 TOKEN = os.environ.get("MCP_AUTH_TOKEN", "")
 
 # (id, description, tool, args, expected)  expected: "refuse" | "ok"
 PROBES = [
     ("g01", "an unfiltered tool name is not callable (ACL default deny)", "__no_such_tool__", {}, "refuse"),
-    ("g02", "SSRF: loopback address is blocked", "browser_navigate", {"url": "http://127.0.0.1:9000/mcp"}, "refuse"),
-    ("g03", "SSRF: cloud metadata address is blocked", "camo_navigate", {"url": "http://169.254.169.254/latest/meta-data/"}, "refuse"),
+    ("g02", "SSRF: loopback address is blocked", "browser_navigate", {"url": "http://localhost:9000/mcp"}, "refuse"),
+    ("g03", "SSRF: cloud metadata address is blocked", "camo_navigate", {"url": METADATA_PROBE}, "refuse"),
     ("g04", "memory_verify rejects a non-uuid id", "memory_verify", {"memory_id": "not-a-uuid"}, "refuse"),
     ("g05", "research rejects an out-of-range tier", "research", {"topic": "probe", "tier": "9"}, "refuse"),
     ("g06", "gpu_chat rejects an unknown model", "gpu_chat", {"prompt": "probe", "model": "no-such-model"}, "refuse"),
