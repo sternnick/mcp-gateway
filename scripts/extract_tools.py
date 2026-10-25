@@ -27,6 +27,69 @@ DEFAULT_SOURCE = os.environ.get(
 README = pathlib.Path(__file__).resolve().parent.parent / "README.md"
 MARKER = "<!-- TOOLS -->"
 
+# MCP annotations as plain language. The server already declares these per tool, so the reference can
+# state what a tool is allowed to do instead of leaving the reader to guess from a name.
+EFFECTS = {
+    "_ANN_READ": "read",
+    "_ANN_READ_COMPUTE": "read, compute",
+    "_ANN_READ_REMOTE": "read, external",
+    "_ANN_READ_REMOTE_COSTLY": "read, external, rate-limited",
+    "_ANN_WRITE": "write",
+    "_ANN_WRITE_IDEMPOTENT": "write, idempotent",
+    "_ANN_DESTRUCTIVE": "destructive",
+    "_ANN_REMOTE_WRITE": "write, external",
+    "_ANN_PAGE_WRITE": "destructive, external",
+}
+
+# Internal markers that belong in the source, not in a reference a stranger reads.
+NOISE = [
+    re.compile(r"\s*(?:#\d+[^)]*)"),          # (#62 R2A), (#350, #208)
+    re.compile(r"\s*ask \d+", re.I),            # "ask 5"
+    re.compile(r"\s*\(#\d+[^)]*\)"),
+    re.compile(r"^[\W_]+", re.U),                # leading symbols
+]
+
+
+def clean(doc: str) -> str:
+    """Turn a docstring's first line into a sentence a reader can use."""
+    text = doc.replace("\u2014", ":").replace("\u2013", "-")
+    text = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "your host", text)
+    text = text.replace("aiproject", "the gateway host")
+    text = text.replace("pi-agent", "the calling principal")
+    for pat in NOISE:
+        text = pat.sub("", text)
+    # deployment detail and a shouted pronoun do not belong in a reference
+    text = re.sub(r"\s*\((?:DEFAULT_MODEL|your host)[^)]*\)", "", text)
+    text = text.replace("THIS client's", "the calling client's")
+    # Docstrings shout. A reference does not.
+    PHRASES = {
+        "APPROVE and SEND": "Approve and send",
+        "DRAFT an email": "Draft an email",
+        "YOU drafted": "you drafted",
+        "YOUR OWN": "your own",
+        "YOUR": "your",
+        "YOU": "you",
+        "does NOT send": "does not send",
+        "DOES NOT": "does not",
+        "IRREVERSIBLE": "irreversible",
+        "REQUIRES": "Requires",
+        "ONLY": "only",
+    }
+    for a, b in PHRASES.items():
+        text = text.replace(a, b)
+    text = re.sub(r"\s+:", ":", text)
+    text = text.replace("this client's", "the calling client's")
+    text = re.sub(r"\s+", " ", text).strip()
+    # keep the first sentence, so a table cell never ends mid-clause
+    cut = re.split(r"(?<=[.!?])\s", text, maxsplit=1)
+    text = cut[0].rstrip()
+    if text and text[-1] not in ".!?":
+        text += "."
+    if len(text) > 150:
+        text = text[:147].rsplit(" ", 1)[0] + "..."
+    return text
+
+
 CATEGORY = [
     ("langgraph_", "Agent orchestration"),
     ("gpu_", "GPU inference"),
@@ -43,6 +106,8 @@ CATEGORY = [
     ("email_", "Email"),
     ("gateway_", "Gateway"),
     ("server_", "Gateway"),
+    ("external_", "External review"),
+    ("retention_", "Retention"),
 ]
 
 
@@ -50,6 +115,8 @@ def category(name: str) -> str:
     for prefix, label in CATEGORY:
         if name.startswith(prefix):
             return label
+    if name == "research":
+        return "Research"
     return "Other"
 
 
@@ -88,11 +155,64 @@ def rows(source_path: str) -> list[tuple[str, str, str]]:
 
 
 def table(source_path: str) -> str:
-    items = rows(source_path)
-    lines = []
-    for cat, name, doc in items:
-        lines.append(f"{cat} | `{name}` | {doc}")
-    return "\n".join(lines)
+    """Render the reference: a surface summary, then one grouped table per surface."""
+    tree = ast.parse(pathlib.Path(source_path).read_text(encoding="utf-8"))
+    rows = []
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        dec = None
+        for d in node.decorator_list:
+            if isinstance(d, ast.Call) and getattr(d.func, "attr", "") == "tool":
+                dec = d
+        if dec is None:
+            continue
+        ann = "read"
+        for kw in dec.keywords:
+            if kw.arg == "annotations" and isinstance(kw.value, ast.Name):
+                ann = kw.value.id
+        rows.append((category(node.name), node.name, clean(first_line(ast.get_docstring(node))),
+                     EFFECTS.get(ann, "read")))
+
+    rows.sort(key=lambda r: (r[0], r[1]))
+    groups: dict[str, list[tuple[str, str, str]]] = {}
+    for cat, name, doc, effect in rows:
+        groups.setdefault(cat, []).append((name, doc, effect))
+
+    out = [
+        f"{len(rows)} tools are defined. A principal is advertised only the ones its access list grants,",
+        "so the count a caller sees can be lower.",
+        "",
+        "| Surface | Tools | Effects |",
+        "|---|---:|---|",
+    ]
+    for cat in sorted(groups):
+        tokens = {tok.strip() for _, _, e in groups[cat] for tok in e.split(",")}
+        order = ["read", "write", "destructive", "compute", "external", "rate-limited", "idempotent"]
+        effects = [tok for tok in order if tok in tokens]
+        out.append(f"| [{cat}](#{anchor(cat)}) | {len(groups[cat])} | {', '.join(effects)} |")
+    out.append(f"| **Total** | **{len(rows)}** | |")
+    out.append("")
+    out.append("`Effect` comes from each tool's own MCP annotations: `read` cannot change state, `write`")
+    out.append("can, `destructive` can lose data, `external` leaves the host. `rate-limited` means an")
+    out.append("immediate repeat leans on an upstream that throttles us.")
+    out.append("")
+
+    for cat in sorted(groups):
+        out.append(f"### {cat} ({len(groups[cat])})")
+        out.append("")
+        out.append("| Tool | What it does | Effect |")
+        out.append("|---|---|---|")
+        for name, doc, effect in groups[cat]:
+            out.append(f"| `{name}` | {doc} | {effect} |")
+        out.append("")
+
+    return "\n".join(out).rstrip()
+
+
+def anchor(text: str) -> str:
+    """GitHub's heading anchor: lowercase, punctuation dropped, spaces to hyphens."""
+    return re.sub(r"[^a-z0-9 -]", "", text.lower()).replace(" ", "-")
 
 
 def main() -> int:
@@ -107,17 +227,14 @@ def main() -> int:
         return 2
 
     text = README.read_text(encoding="utf-8")
-    if MARKER not in text:
-        print(f"marker {MARKER} missing from README.md", file=sys.stderr)
+    START, END = "<!-- TOOLS:START -->", "<!-- TOOLS:END -->"
+    if START not in text or END not in text:
+        print(f"markers {START} / {END} missing from README.md", file=sys.stderr)
         return 2
 
     new_table = table(args.source)
-    updated = re.sub(
-        re.escape(MARKER) + r"(?:\n.*?)?(?=\n\nCounts by category)",
-        MARKER + "\n" + new_table,
-        text,
-        flags=re.S,
-    )
+    pattern = re.compile(re.escape(START) + r".*?" + re.escape(END), re.S)
+    updated = pattern.sub(START + "\n" + new_table + "\n" + END, text)
 
     if args.check:
         if updated != text:
