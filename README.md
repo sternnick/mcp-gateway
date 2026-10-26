@@ -245,9 +245,11 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 ```
 
 Minimum configuration to start: `MCP_PORT`, `MCP_AUTH_TOKEN`, and the upstream URLs you intend to use
-(the upstream URL variables). `server.py` reads 101 environment keys and all 101 are documented in
-[`.env.example`](.env.example): 81 as live assignments, 20 more as commented opt-in examples. The
-ones that matter for a first run are named there in order.
+(the upstream URL variables). `server.py` reads 104 environment keys. 101 of them are named in
+[`.env.example`](.env.example), 81 as live assignments and 20 as commented opt-in examples; the other
+three are build-identity values the image stamps for itself, described there rather than named, since
+they are image metadata and not runtime configuration. `scripts/check_public_counts.py` re-derives
+every one of those numbers from the deployed source, so the sentence cannot drift again.
 
 To run without the ACL (single-tenant development only), leave `MCP_PRINCIPALS` and `MCP_ACL` unset,
 which is the documented rollback path.
