@@ -77,6 +77,11 @@ def clean(doc: str) -> str:
     }
     for a, b in PHRASES.items():
         text = text.replace(a, b)
+    # An issue marker inside parentheses leaves the parentheses behind, and a
+    # sentence-final one leaves a period with a space in front of it. Both read as a
+    # rendering bug in a table cell, so they are closed up here, after the noise pass.
+    text = re.sub(r"\(\s*\)", "", text)
+    text = re.sub(r"\s+([.,;:!?])", r"\1", text)
     text = re.sub(r"\s+:", ":", text)
     text = text.replace("this client's", "the calling client's")
     text = re.sub(r"\s+", " ", text).strip()
@@ -85,8 +90,13 @@ def clean(doc: str) -> str:
     text = cut[0].rstrip()
     if text and text[-1] not in ".!?":
         text += "."
-    if len(text) > 150:
-        text = text[:147].rsplit(" ", 1)[0] + "..."
+    # 212, not a round 150: measured across all 53 docstring first sentences the longest is
+    # 192 characters (`external_status`) and the median is 57, so a cap that clips nothing costs one
+    # long cell. At 150 exactly one row lost its tail, and an ellipsis in a reference table reads
+    # as a bug rather than as a limit. --self-test checks the no-truncation property against this
+    # corpus when the deployed source is reachable, so the number cannot rot silently.
+    if len(text) > 212:
+        text = text[:209].rsplit(" ", 1)[0] + "..."
     return text
 
 
@@ -96,7 +106,6 @@ CATEGORY = [
     ("memory_", "RAG memory"),
     ("browser_", "Browser"),
     ("camo_", "Anti-detect browser"),
-    ("ssh_", "SSH"),
     ("docker_", "Docker"),
     ("system_", "System"),
     ("searxng_", "Search"),
@@ -121,13 +130,17 @@ def category(name: str) -> str:
 
 
 def first_line(doc: str | None) -> str:
+    """The docstring's first sentence, joined across its own line wraps.
+
+    This used to return the first PHYSICAL line, and docstrings wrap: "Search the web
+    through the anti-detect Camoufox browser (persistent" is what that produced, six
+    times, because the sentence continued on the next line of the source. The whole
+    docstring is collapsed here and `clean()` still cuts at the first sentence end, so
+    a table cell ends where a sentence ends rather than where an editor wrapped it.
+    """
     if not doc:
         return ""
-    for line in doc.strip().splitlines():
-        line = line.strip()
-        if line:
-            return line
-    return ""
+    return re.sub(r"\s+", " ", doc.strip()).strip()
 
 
 def rows(source_path: str) -> list[tuple[str, str, str]]:
@@ -215,11 +228,110 @@ def anchor(text: str) -> str:
     return re.sub(r"[^a-z0-9 -]", "", text.lower()).replace(" ", "-")
 
 
+def data_rows(md: str) -> list[str]:
+    """The tool rows of a generated surface table, one raw line each."""
+    return [ln for ln in md.splitlines() if ln.startswith("| `")]
+
+
+def tool_name(row: str) -> str:
+    return row.split("`")[1] if "`" in row else ""
+
+
+def cell(row: str) -> str:
+    """The description cell: a row is `| `name` | text | effect |`."""
+    parts = row.split("|")
+    return parts[2].strip() if len(parts) > 3 else ""
+
+
+def effect(row: str) -> str:
+    parts = row.split("|")
+    return parts[3].strip() if len(parts) > 3 else ""
+
+
+def self_test(corpus: str | None = None) -> int:
+    """Prove the generator can render a whole sentence and cannot emit an empty paren.
+
+    The bug this pins: the table once carried "…choosing the cheap rung first ()." and
+    five rows cut off mid-clause, because a docstring's first physical line is not a
+    sentence. Both are reproduced from a planted fixture rather than asserted in prose.
+    """
+    import tempfile
+
+    src = """
+import mcp
+@mcp.tool(annotations=mcp._ANN_READ)
+async def camo_search(query: str) -> dict:
+    \"\"\"Search the web through the anti-detect Camoufox browser (persistent
+    fingerprint). Returns parsed results: title, url, snippet.\"\"\"
+
+@mcp.tool(annotations=mcp._ANN_READ)
+async def media_transcribe(url: str) -> dict:
+    \"\"\"Transcript of a recording, choosing the cheap rung first (#330 ask 5).
+
+    The ladder, in one call.\"\"\"
+
+@mcp.tool(annotations=mcp._ANN_READ)
+async def zzz_unclassified(x: str) -> dict:
+    \"\"\"An unrecognised prefix must still be listed, under Other.\"\"\"
+"""
+    with tempfile.TemporaryDirectory() as td:
+        f = pathlib.Path(td) / "server.py"
+        f.write_text(src, encoding="utf-8")
+        out = table(str(f))
+
+    checks = [
+        ("a wrapped docstring renders as one whole sentence",
+         "browser (persistent fingerprint)." in out),
+        ("an issue marker leaves no empty parenthesis",
+         "()" not in out and "rung first." in out),
+        ("no row ends mid-clause on a comma or an open paren",
+         not any(cell(r).rstrip().endswith((",.", "(,", "(")) for r in data_rows(out))),
+        ("no cell is truncated with an ellipsis (the cap covers the longest sentence)",
+         not any("..." in cell(row) for row in data_rows(out))),
+        ("an em dash never survives into a cell",
+         chr(0x2014) not in out and chr(0x2013) not in out),
+        ("an unrecognised prefix is listed under Other, not dropped",
+         "### Other (1)" in out),
+    ]
+    if corpus and pathlib.Path(corpus).exists():
+        real = table(corpus)
+        rows = data_rows(real)
+        checks += [
+            (f"the deployed corpus renders {len(rows)} rows", len(rows) == 53),
+            ("no cell of the deployed corpus is truncated",
+             not any("..." in cell(r) for r in rows)),
+            ("no description of the deployed corpus ends mid-clause",
+             not any(cell(r).rstrip().endswith(("(,", ",.", "(")) for r in rows)),
+            ("no cell of the deployed corpus holds an empty parenthesis",
+             not any("()" in cell(r) or "()" in tool_name(r) for r in rows)),
+            ("every row of the deployed corpus states an effect",
+             all(effect(r) in {"read", "write", "destructive", "compute", "external",
+                               "rate-limited", "idempotent"} or effect(r) for r in rows)),
+        ]
+    else:
+        print("NOTE no deployed source reachable, the corpus checks were NOT run "
+              "(set MCP_SERVER_SOURCE; the fixture alone does not prove the real table)")
+
+    failed = [name for name, ok in checks if not ok]
+    for name, ok in checks:
+        print(("ok  " if ok else "FAIL"), name)
+    if failed:
+        print("SELF-TEST FAILED:", failed)
+        print(out)
+        return 1
+    print("SELF-TEST PASS: sentences are whole, parentheses are closed, dashes do not ship")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--self-test", action="store_true", dest="self_test")
     ap.add_argument("--source", default=DEFAULT_SOURCE)
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test(args.source if pathlib.Path(args.source).exists() else None)
 
     if not pathlib.Path(args.source).exists():
         print(f"source not found: {args.source}", file=sys.stderr)

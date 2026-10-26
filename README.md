@@ -4,7 +4,7 @@
 
 **The AI agent tool bridge: internal services exposed as standardized MCP tools behind one authenticated endpoint**
 
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)]()
+[![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=for-the-badge&logo=python&logoColor=white)]()
 [![MCP](https://img.shields.io/badge/MCP-streamable--http-6E56CF?style=for-the-badge)]()
 [![FastMCP](https://img.shields.io/badge/FastMCP-4.0.1-1A73E8?style=for-the-badge)]()
 [![Docker](https://img.shields.io/badge/Docker-socket--proxy-2496ED?style=for-the-badge)]()
@@ -65,8 +65,9 @@ transport, one credential and one tool namespace instead of a client per service
 - **53 tool definitions**, of which **42 are advertised** to the default principal. The
   difference is the ACL, not a bug: a principal only sees the tools it is granted.
 - **Tool set:** agent orchestration, GPU inference (chat, TTS, ASR, embeddings), RAG memory, web search
-  and research, browser and anti-detect browser control, YouTube and media transcription, Docker, SSH
-  and file access, system status, email drafting with a human approval gate.
+  and research, browser and anti-detect browser control, YouTube and media transcription, read-only
+  Docker through a socket proxy, host and retention status, email drafting with a human approval
+  gate.
 - **Transport:** MCP `streamable-http` via FastMCP, one POST endpoint, SSE responses, session-aware.
 - **Identity:** bearer token mapped to a named principal; per-principal tool allowlist; default deny.
 - **Observability:** Prometheus metrics for tool calls, upstream failures, cache behaviour and process
@@ -116,10 +117,10 @@ immediate repeat leans on an upstream that throttles us.
 | `camo_close` | Close the calling client's Camoufox page immediately. | write, idempotent |
 | `camo_content` | Return the visible text of the current Camoufox page (truncated). | read |
 | `camo_evaluate` | Run JavaScript in the current Camoufox page and return the result. | destructive, external |
-| `camo_fingerprint` | Report the Camoufox browser fingerprint (UA, webdriver flag, canvas, etc.) and. | read |
+| `camo_fingerprint` | Report the Camoufox browser fingerprint (UA, webdriver flag, canvas, etc.) and validate it against the pinned profile (rule 9: validate at runtime). | read |
 | `camo_navigate` | Open a URL in the Camoufox anti-detection browser (patched Firefox). | read, external, rate-limited |
 | `camo_screenshot` | Take a screenshot of the current Camoufox page. | read |
-| `camo_search` | Search the web through the anti-detect Camoufox browser (persistent. | read, external, rate-limited |
+| `camo_search` | Search the web through the anti-detect Camoufox browser (persistent fingerprint). | read, external, rate-limited |
 | `camo_type` | Type text into an input matching the CSS selector in the Camoufox browser. | destructive, external |
 
 ### Browser (7)
@@ -130,7 +131,7 @@ immediate repeat leans on an upstream that throttles us.
 | `browser_close` | Close the calling client's browser page and context immediately. | write, idempotent |
 | `browser_content` | Return the visible text of the current page (truncated). | read |
 | `browser_evaluate` | Run JavaScript in the current page and return the result. | destructive, external |
-| `browser_navigate` | Open a URL in the headless browser. | read |
+| `browser_navigate` | Open a URL in the headless browser. | read, external |
 | `browser_screenshot` | Take a screenshot of the current page. | read |
 | `browser_type` | Type text into an input matching the CSS selector. | destructive, external |
 
@@ -155,7 +156,7 @@ immediate repeat leans on an upstream that throttles us.
 | Tool | What it does | Effect |
 |---|---|---|
 | `external_review` | Ask an external frontier model for feedback on a hard question. | read, compute |
-| `external_status` | Report the external reviewer's configuration and health: which model, the. | read |
+| `external_status` | Report the external reviewer's configuration and health: which model, the retry/deadline budget, whether the key is present (never its value), and the upstream latency/outcome counters for it. | read |
 
 ### GPU inference (5)
 
@@ -178,9 +179,9 @@ immediate repeat leans on an upstream that throttles us.
 
 | Tool | What it does | Effect |
 |---|---|---|
-| `media_transcribe` | Transcript of a recording, choosing the cheap rung first (). | read, external, rate-limited |
-| `yt_audio` | Download a YouTube video's AUDIO and hand back a path `gpu_stt` can read. | read, external, rate-limited |
-| `yt_transcript` | Fetch a YouTube video's transcript (manual subtitles first, auto-generated. | read, external, rate-limited |
+| `media_transcribe` | Transcript of a recording, choosing the cheap rung first. | read, external, rate-limited |
+| `yt_audio` | Download a YouTube video's AUDIO and hand back a path `gpu_stt` can read.). | read, external, rate-limited |
+| `yt_transcript` | Fetch a YouTube video's transcript (manual subtitles first, auto-generated fallback). | read, external, rate-limited |
 | `yt_video_info` | Get a YouTube video's metadata and available subtitle languages. | read, external, rate-limited |
 
 ### RAG memory (8)
@@ -215,7 +216,7 @@ immediate repeat leans on an upstream that throttles us.
 | `research_fetch` | OpenAI-style FETCH tool. | read, external, rate-limited |
 | `research_menu` | List the research tiers. | read |
 | `research_search` | OpenAI-style SEARCH tool. | read, external, rate-limited |
-| `searxng_search` | Metasearch via the local SearXNG instance (aggregates google cse,. | read, external |
+| `searxng_search` | Metasearch via the local SearXNG instance (aggregates google cse, bing, duckduckgo, wikipedia, brave, startpage, mojeek, qwant). | read, external |
 
 ### System (1)
 
@@ -244,8 +245,9 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 ```
 
 Minimum configuration to start: `MCP_PORT`, `MCP_AUTH_TOKEN`, and the upstream URLs you intend to use
-(the upstream URL variables). 81 keys are documented in
-[`.env.example`](.env.example); the ones that matter for a first run are named there in order.
+(the upstream URL variables). `server.py` reads 101 environment keys and all 101 are documented in
+[`.env.example`](.env.example): 81 as live assignments, 20 more as commented opt-in examples. The
+ones that matter for a first run are named there in order.
 
 To run without the ACL (single-tenant development only), leave `MCP_PRINCIPALS` and `MCP_ACL` unset,
 which is the documented rollback path.
@@ -325,7 +327,7 @@ contract is currently shaped that way.
 ## Deployment
 
 Push to `main` builds the image, the host pulls and restarts the container, and a health check calls
-`POST /mcp`. The runtime is a pinned Python 3.12 image; dependency pins live in
+`POST /mcp`. The runtime is a digest-pinned Python 3.14 image; dependency pins live in
 [`requirements.txt`](requirements.txt) with the reason for each pin recorded next to it.
 
 ## Status
