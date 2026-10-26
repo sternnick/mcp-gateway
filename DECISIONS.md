@@ -107,3 +107,38 @@ that has no error channel of its own.
 call as a success, which is the failure recorded in Known Limitations. Normalizing this is the next
 change, and it is listed rather than hidden because a contract is only as good as the client's ability to
 recognise a failure.
+
+
+## D8. History purged by squash, and the residue a force-push cannot reach is accepted
+
+**Choice.** `main` is a single squashed commit. Historical PR refs (`refs/pull/`) may contain old
+commits. These are unreachable via standard `git clone`. We accept this risk as no secrets were
+exposed, only internal topology.
+
+**What was actually in the old history.** An early `.env.example` and a README line carried a real
+LAN address (`192.168.x.x`), a personal mailbox in commit author metadata, and internal filesystem
+paths under a home directory. Measured against the credential patterns in the pi-agent
+issue-recorder: no bearer token, no password, no API key was ever committed here, in any commit.
+The exposure is topology and identity, not access.
+
+**Why squash rather than filter-repo.** The repository is a documentation mirror with no source
+code, so its history carries no information a reader needs; and `git filter-repo --replace-text`
+would have rewritten `scripts/extract_tools.py`, whose redaction rule must contain the literal
+string it redacts. Rewriting all history to one commit also removes every author email at once,
+which a string replacement does not touch.
+
+**What it cost.** Three merged PRs' commit history and the blame history of every line are gone.
+Anyone who cloned before 2026-10-26 has a divergent `main` and must re-clone rather than pull. A
+force-push also cannot delete `refs/pull/<n>/head` on GitHub's side, so `refs/pull/2`, `3` and `4`
+still reach the pre-purge commits: the leak is closed on every branch and unreachable by `git
+clone`, and remains reachable by a caller who fetches a PR ref explicitly and knows to look.
+
+**Rejected.** Deleting and recreating the repository, which would have cleared the PR refs too, at
+the price of the PR and issue record and of every link's redirect history; and filing a GitHub
+data-removal request, which puts an internal-IP disclosure into a support queue for a payload that
+grants nothing. Both stay available if the revisit condition below ever fires.
+
+**Revisit condition.** If any credential ever lands in this repository's history, or if the private
+repository's `.env.example` is mirrored here verbatim again, this decision is void and the
+recreate path is the correct one. The guard against the second case is
+`scripts/check_public_counts.py` plus the generator's own redaction pass, not this note.
