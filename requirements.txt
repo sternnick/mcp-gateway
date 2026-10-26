@@ -1,0 +1,29 @@
+# Pinned to the exact versions inside the last verified-working image (built
+# 2026-09-02, camo_*/yt_transcript/browser all confirmed by live calls).
+#
+# WHY PINNED: every requirement here used to be a ">=" range, so a rebuild could
+# silently resolve something newer than what was actually tested. On 2026-09-02 a
+# rebuild pulled camoufox 0.5.5 (the working image had 0.5.4), which fetched
+# browser build 152.0.4-beta.29 while the durable fingerprint profile still
+# pointed at 152.0.4-beta.28 -> every camo_* tool died with
+# "Failed to launch firefox because executable doesn't exist". The fix is not a
+# version guess: camoufox's own CLI can pin the browser build (see Dockerfile
+# CAMOUFOX_BUILD), and that combination was proven working in a throwaway
+# container before rebuilding the gateway.
+#
+# To upgrade: change ONE pin, rebuild, re-run the camo_*/yt_transcript checks.
+mcp==2.2.0
+httpx==0.28.1
+playwright==1.60.0
+python-dotenv==1.2.3
+fastmcp==4.0.1
+# camoufox requires playwright<1.61: 1.60.0 above is inside that window.
+camoufox==0.5.4
+# yt-dlp used to be installed by the Dockerfile with no pin at all. 2026.8.19 is
+# verified today: real transcripts returned for captioned videos, and the
+# "no 'en' captions found" answer for Big Buck Bunny is correct (that video has
+# neither manual nor automatic captions), not a failure.
+# No JS runtime is bundled: deno is not in Debian apt, and node 20 did not
+# satisfy yt-dlp 2026.8.19 even with --js-runtimes node. Subtitle extraction
+# works without one. If YouTube extraction ever degrades, that is the lever.
+yt-dlp==2026.8.19
