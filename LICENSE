@@ -1,0 +1,10 @@
+Copyright (c) 2026 Nick Sterniotis
+All rights reserved.
+
+The architecture documents, evaluations, decision records and configuration examples in this repository
+describe internal services and are not licensed for reuse, redistribution or republication without written
+permission.
+
+The helper scripts under `scripts/` are also unlicensed as of this notice. A path-scoped grant for them, the
+way sternnick/dgx-spark-cpu-ml splits its licence by directory, is a one-paragraph addition and has not been
+made here: widening a grant is an owner decision, not a licence-hygiene fix.
